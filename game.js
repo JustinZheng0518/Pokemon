@@ -26,28 +26,36 @@ state.recent.slice(0,4).forEach(r=>{const p=SPECIES.find(p=>p.id===r.id),card=do
 const dex=$('#dex');dex.replaceChildren();
 SPECIES.filter(p=>filter==='all'||(filter==='caught'?state.caught[p.id]:state.caught[p.id]?.shiny)).forEach(p=>{const c=state.caught[p.id],card=document.createElement('div');card.className='dex-card'+(c?'':' locked');const num=document.createElement('small');num.textContent='#'+String(p.id).padStart(3,'0');const name=document.createElement('strong');name.textContent=c?p.name:'未发现';const count=document.createElement('small');count.textContent=c?`${p.type} · ×${c.count}`:'等待一次相遇';card.append(num,pokeImage(p,!!c?.shiny),name,count);if(c?.shiny){const star=document.createElement('span');star.className='shiny-star';star.textContent='✦ '+c.shiny;card.append(star);}dex.append(card);});
 if(!dex.children.length){const p=document.createElement('p');p.className='empty';p.textContent='还没有这样的伙伴，继续探索吧。';dex.append(p);}
-$('#launch').disabled=!!ball;$('#gacha').disabled=!!ball;
+updateAutoControl();
 }
 let audioOn=false,audioCtx;
 function sound(freq=500){if(!audioOn)return;try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.frequency.value=freq;g.gain.setValueAtTime(.035,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.16);o.start();o.stop(audioCtx.currentTime+.17);}catch{}}
 $('#sound').onclick=()=>{audioOn=!audioOn;$('#sound').textContent='声音：'+(audioOn?'开':'关');$('#sound').setAttribute('aria-pressed',audioOn);sound();};
 const rarityNames=['','常见伙伴','特别伙伴','稀有伙伴','传说伙伴'];
-function capture(boost=0){const roll=Math.random();const tier=roll<.015+boost*.002?4:roll<.12+boost*.012?3:roll<.44+boost*.015?2:1;const pool=SPECIES.filter(p=>p.rarity===tier);const p=pool[Math.floor(Math.random()*pool.length)],shiny=Math.random()<.05,isNew=!state.caught[p.id];const c=state.caught[p.id]??{count:0,shiny:0};c.count++;if(shiny)c.shiny++;state.caught[p.id]=c;state.recent.unshift({id:p.id,shiny});state.recent=state.recent.slice(0,12);save();render();
+function capture(boost=0,notify=true){const roll=Math.random();const tier=roll<.015+boost*.002?4:roll<.12+boost*.012?3:roll<.44+boost*.015?2:1;const pool=SPECIES.filter(p=>p.rarity===tier);const p=pool[Math.floor(Math.random()*pool.length)],shiny=Math.random()<.05,isNew=!state.caught[p.id];const c=state.caught[p.id]??{count:0,shiny:0};c.count++;if(shiny)c.shiny++;state.caught[p.id]=c;state.recent.unshift({id:p.id,shiny});state.recent=state.recent.slice(0,12);save();render();
 $('#rewardTag').textContent=shiny?'A SHINY LITTLE MIRACLE':isNew?'NEW DISCOVERY':'HELLO AGAIN';$('#rewardHeading').textContent=shiny?'闪光！是特别的相遇':isNew?'发现一位新朋友！':'老朋友，又见面啦';$('#rewardName').textContent=p.name+(shiny?' ✦':'');$('#rewardRarity').textContent=rarityNames[p.rarity]+' · '+p.type;$('#rewardText').textContent=`已加入收藏 · 你拥有 ${c.count} 只${shiny?'，其中闪光 '+c.shiny+' 只':''}`;
 const img=$('#rewardImage');img.hidden=false;$('#rewardFallback').hidden=true;img.onerror=()=>{img.hidden=true;$('#rewardFallback').hidden=false;};img.src=sprite(p,shiny);img.alt=p.name;
-$('#reward').showModal();sound(shiny?1100:740);
+if(notify)$('#reward').showModal();else toast(`${shiny?'✦ 闪光！':'发现伙伴：'}${p.name} · 已收入图鉴`);sound(shiny?1100:740);
 }
 $('#closeReward').onclick=$('#continue').onclick=()=>$('#reward').close();
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===b));document.querySelectorAll('.page').forEach(p=>p.hidden=p.id!==b.dataset.tab);if(b.dataset.tab==='explore')resize();});
 document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(t=>t.classList.toggle('active',t===b));render();});
 $('#refill').onclick=()=>{if(state.coins<30)return toast('金币不足，探索碰撞可以获得金币');state.coins-=30;state.energy+=5;save();render();toast('已补充 5 点探索能量');};
-$('#gacha').onclick=()=>{if(ball)return;if(state.coins<50)return toast('需要 50 金币，先去森林探索吧');state.coins-=50;capture(3);};
+$('#gacha').onclick=()=>{if(state.coins<50)return toast('需要 50 金币，先去森林探索吧');state.coins-=50;capture(3);};
 $('#export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`pocket-field-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-$('#import').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(ball)return toast('请等待本次探索结束后再导入');if(file.size>100000)return toast('存档文件过大');try{const parsed=JSON.parse(await file.text());if(!validSave(parsed))throw Error();if(!confirm('导入会替换当前进度。建议先导出备份，确定继续吗？'))return;state=parsed;daily();save();render();toast('存档已导入');}catch{toast('无法读取存档，请选择本游戏导出的 JSON 文件');}};
+$('#import').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(autoEnabled)return toast('请先暂停自动丢球，再导入存档');if(file.size>100000)return toast('存档文件过大');try{const parsed=JSON.parse(await file.text());if(!validSave(parsed))throw Error();if(!confirm('导入会替换当前进度。建议先导出备份，确定继续吗？'))return;ball=null;state=parsed;daily();save();render();toast('存档已导入');}catch{toast('无法读取存档，请选择本游戏导出的 JSON 文件');}};
 // Fixed-step simulation keeps collisions consistent on 60 Hz and 120 Hz phones.
 const canvas=$('#board'),ctx=canvas.getContext('2d');
 const W=400,H=490;
-let ball=null,lastTime=0,accumulator=0;
+let ball=null,lastTime=0,accumulator=0,autoEnabled=true,nextBallIn=0;
+let speed=Number(state.speed)||1;
+speed=Math.min(5,Math.max(.5,speed));
+$('#speed').value=speed;$('#speedValue').textContent=speed+'×';
+function updateAutoControl(){
+const btn=$('#launch');btn.replaceChildren();btn.append(document.createTextNode('自动丢球：'+(autoEnabled?'开':'关')));const hint=document.createElement('span');hint.textContent=autoEnabled?'点击暂停 Ⅱ':'点击继续 ▷';btn.append(hint);btn.setAttribute('aria-checked',String(autoEnabled));
+}
+$('#speed').oninput=()=>{speed=Number($('#speed').value);state.speed=speed;$('#speedValue').textContent=speed+'×';save();};
+$('#launch').onclick=()=>{daily();if(!autoEnabled&&state.energy<1&&!ball){render();return toast('能量不足，请先补充能量');}autoEnabled=!autoEnabled;lastTime=0;accumulator=0;updateAutoControl();$('#launchTitle').textContent=autoEnabled?'自动探索已开启':'自动探索已暂停';$('#launchHint').textContent=autoEnabled?'连续丢球中 · 速度可随时调整':'弹珠已暂停，点击开关继续探索';};
 const pegs=[];
 for(let row=0;row<7;row++)for(let col=0;col<7;col++){const x=45+col*51+(row%2?20:0),y=105+row*43;if(x<375&&!(row===3&&col===3))pegs.push({x,y,r:5,lit:0});}
 const bumpers=[{x:107,y:183,r:23,label:'⚡',color:'#d8ce73'},{x:292,y:183,r:23,label:'◒',color:'#dba795'},{x:200,y:317,r:28,label:'✧',color:'#afc68a'}];
@@ -75,10 +83,19 @@ const speed=Math.hypot(b.vx,b.vy);if(speed>500){b.vx*=500/speed;b.vy*=500/speed;
 $('#ballCount').textContent=`碰撞 ${b.hits} 次 · +${b.coins} 金币`;
 if(b.y>435||b.age>14)finishShot();
 }
-function finishShot(){if(!ball)return;const b=ball;ball=null;state.coins+=b.coins+10;save();$('#launchTitle').textContent=`探索完成 · 获得 ${b.coins+10} 金币`;$('#launchHint').textContent='每次探索必遇一只宝可梦，碰撞提升稀有机会';$('#ballCount').textContent='探索完成';render();capture(Math.min(5,b.hits/5));}
-$('#launch').onclick=()=>{if(ball||$('#reward').open)return;daily();if(state.energy<1){render();return toast('能量不足，可补充能量，或等待明日补给');}state.energy--;state.shots++;save();const aim=Number($('#aim').value);ball={x:200,y:78,vx:Math.sin(aim)*230+(Math.random()-.5)*18,vy:Math.cos(aim)*180,age:0,hits:0,coins:0,trail:[]};$('#launchTitle').textContent='弹珠正在探索森林…';$('#launchHint').textContent='碰撞收集金币，落入区域后发现宝可梦';sound(600);render();};
+function finishShot(){if(!ball)return;const b=ball;ball=null;state.coins+=b.coins+10;nextBallIn=.65;save();$('#launchTitle').textContent=`探索完成 · 获得 ${b.coins+10} 金币`;$('#launchHint').textContent='下一颗弹珠即将出发 · 捕获自动收入图鉴';$('#ballCount').textContent='探索完成';capture(Math.min(5,b.hits/5),false);}
+function launchBall(){
+daily();if(state.energy<1){autoEnabled=false;render();$('#launchTitle').textContent='能量用完啦，休息一下';$('#launchHint').textContent='补充能量后，打开自动丢球开关继续';toast('自动探索已停止：请补充能量');return;}
+state.energy--;state.shots++;save();const aim=Number($('#aim').value);ball={x:200,y:78,vx:Math.sin(aim)*230+(Math.random()-.5)*18,vy:Math.cos(aim)*180,age:0,hits:0,coins:0,trail:[]};$('#launchTitle').textContent='弹珠正在自动探索森林…';$('#launchHint').textContent='捕获自动收藏 · 可随时暂停或调节速度';sound(600);render();
+}
 $('#aim').oninput=()=>{if(!ball)draw();};
-function frame(t){if(!lastTime)lastTime=t;accumulator+=Math.min((t-lastTime)/1000,.05);lastTime=t;while(accumulator>=1/120){step(1/120);accumulator-=1/120;}if(!$('#explore').hidden)draw();requestAnimationFrame(frame);}
+function frame(t){if(!lastTime)lastTime=t;const elapsed=Math.min((t-lastTime)/1000,.05);lastTime=t;
+if(autoEnabled&&!document.hidden&&!$('#reward').open){
+ if(!ball){nextBallIn-=elapsed*speed;if(nextBallIn<=0)launchBall();}
+ accumulator+=elapsed*speed;
+ while(accumulator>=1/120){step(1/120);accumulator-=1/120;}
+}else accumulator=0;
+if(!$('#explore').hidden)draw();requestAnimationFrame(frame);}
 document.addEventListener('visibilitychange',()=>{lastTime=0;accumulator=0;if(!document.hidden&&daily()){save();render();toast('新的一天，探索能量已补给');}});
 window.addEventListener('pagehide',()=>{if(ball)finishShot();save();});
 render();resize();save();requestAnimationFrame(frame);if(!storageOK)toast('存档读取异常，建议导出备份后检查浏览器设置');
