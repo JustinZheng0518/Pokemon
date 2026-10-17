@@ -2,100 +2,270 @@
 const SPECIES=[
 [1,'妙蛙种子','草',1],[4,'小火龙','火',1],[7,'杰尼龟','水',1],[10,'绿毛虫','虫',1],[16,'波波','飞行',1],[25,'皮卡丘','电',2],[35,'皮皮','妖精',2],[37,'六尾','火',2],[39,'胖丁','妖精',1],[43,'走路草','草',1],[54,'可达鸭','水',1],[58,'卡蒂狗','火',2],[63,'凯西','超能力',2],[79,'呆呆兽','水',1],[92,'鬼斯','幽灵',2],[95,'大岩蛇','岩石',2],[129,'鲤鱼王','水',1],[131,'拉普拉斯','水',3],[132,'百变怪','一般',3],[133,'伊布','一般',2],[143,'卡比兽','一般',3],[147,'迷你龙','龙',3],[151,'梦幻','超能力',4],[175,'波克比','妖精',2],[179,'咩利羊','电',1],[196,'太阳伊布','超能力',3],[197,'月亮伊布','恶',3],[252,'木守宫','草',2],[255,'火稚鸡','火',2],[258,'水跃鱼','水',2]
 ].map(([id,name,type,rarity])=>({id,name,type,rarity}));
-const SAVE_KEY='pocket-field-v1';
-const $=s=>document.querySelector(s);
-const today=()=>new Date().toLocaleDateString('sv-SE');
-const fresh=()=>({version:1,energy:20,coins:100,date:today(),caught:{},recent:[],shots:0});
-function validSave(s){return s&&s.version===1&&Number.isInteger(s.energy)&&s.energy>=0&&s.energy<=1000000&&Number.isInteger(s.coins)&&s.coins>=0&&s.coins<=100000000&&Number.isInteger(s.shots)&&s.shots>=0&&/^\d{4}-\d{2}-\d{2}$/.test(s.date)&&s.caught&&typeof s.caught==='object'&&!Array.isArray(s.caught)&&Object.entries(s.caught).every(([id,v])=>SPECIES.some(p=>String(p.id)===id)&&v&&Number.isInteger(v.count)&&v.count>0&&Number.isInteger(v.shiny)&&v.shiny>=0&&v.shiny<=v.count)&&Array.isArray(s.recent)&&s.recent.length<=12&&s.recent.every(r=>r&&SPECIES.some(p=>p.id===r.id)&&typeof r.shiny==='boolean');}
-let state=fresh(),storageOK=true;
-try{const raw=localStorage.getItem(SAVE_KEY);if(raw){const parsed=JSON.parse(raw);if(validSave(parsed))state=parsed;else storageOK=false;}}catch{storageOK=false;}
-function daily(){if(state.date!==today()){state.energy=Math.max(20,state.energy);state.date=today();return true;}return false;}
-daily();
-function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(state));}catch{storageOK=false;toast('浏览器无法保存，请导出存档备份');}}
-let toastTimer;
-function toast(t){$('#toast').textContent=t;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3000);}
-function sprite(p,shiny=false){return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${shiny?'shiny/':''}${p.id}.png`;}
-function pokeImage(p,shiny=false){const img=document.createElement('img');img.src=sprite(p,shiny);img.alt=p.name;img.loading='lazy';img.onerror=()=>{img.onerror=null;img.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><circle cx="40" cy="40" r="25" fill="#d5e3b7" stroke="#60816b" stroke-width="4"/><path d="M15 40h50" stroke="#60816b" stroke-width="4"/><circle cx="40" cy="40" r="8" fill="#fff" stroke="#60816b" stroke-width="4"/></svg>');};return img;}
-let filter='all';
-function render(){
-$('#energy').textContent=state.energy;$('#coins').textContent=state.coins;$('#progress').textContent=`${Object.keys(state.caught).length} / ${SPECIES.length}`;
-$('#caughtTotal').textContent=`共 ${Object.values(state.caught).reduce((a,v)=>a+v.count,0)} 位伙伴`;
-const recent=$('#recent');recent.replaceChildren();
-if(!state.recent.length){const p=document.createElement('p');p.className='empty';p.textContent='这里还很安静。发射第一颗弹珠，开始你的收藏。';recent.append(p);}
-state.recent.slice(0,4).forEach(r=>{const p=SPECIES.find(p=>p.id===r.id),card=document.createElement('div');card.className='recent-item';card.append(pokeImage(p,r.shiny));const name=document.createElement('strong');name.textContent=p.name+(r.shiny?' ✦':'');const type=document.createElement('small');type.textContent=r.shiny?'闪光伙伴':p.type+'系伙伴';card.append(name,type);recent.append(card);});
-const dex=$('#dex');dex.replaceChildren();
-SPECIES.filter(p=>filter==='all'||(filter==='caught'?state.caught[p.id]:state.caught[p.id]?.shiny)).forEach(p=>{const c=state.caught[p.id],card=document.createElement('div');card.className='dex-card'+(c?'':' locked');const num=document.createElement('small');num.textContent='#'+String(p.id).padStart(3,'0');const name=document.createElement('strong');name.textContent=c?p.name:'未发现';const count=document.createElement('small');count.textContent=c?`${p.type} · ×${c.count}`:'等待一次相遇';card.append(num,pokeImage(p,!!c?.shiny),name,count);if(c?.shiny){const star=document.createElement('span');star.className='shiny-star';star.textContent='✦ '+c.shiny;card.append(star);}dex.append(card);});
-if(!dex.children.length){const p=document.createElement('p');p.className='empty';p.textContent='还没有这样的伙伴，继续探索吧。';dex.append(p);}
-updateAutoControl();
+const SAVE_KEY = 'pocket-field-v1'; // Preserve saves from the earlier releases.
+const $ = selector => document.querySelector(selector);
+const today = () => new Date().toLocaleDateString('sv-SE');
+const fresh = () => ({version:1, energy:20, coins:100, date:today(), caught:{}, recent:[], shots:0, speed:1});
+function validSave(s) {
+  return s && s.version === 1 && Number.isSafeInteger(s.coins) && s.coins >= 0 &&
+    Number.isSafeInteger(s.shots) && s.shots >= 0 && s.caught && typeof s.caught === 'object' && !Array.isArray(s.caught) &&
+    Object.entries(s.caught).every(([id,v]) => SPECIES.some(p=>String(p.id)===id) && v && Number.isSafeInteger(v.count) && v.count>0 && Number.isSafeInteger(v.shiny) && v.shiny>=0 && v.shiny<=v.count) &&
+    Array.isArray(s.recent) && s.recent.length<=12 && s.recent.every(r=>r && SPECIES.some(p=>p.id===r.id) && typeof r.shiny==='boolean') &&
+    (s.speed === undefined || (Number.isFinite(s.speed) && s.speed>=.5 && s.speed<=5));
 }
-let audioOn=false,audioCtx;
-function sound(freq=500){if(!audioOn)return;try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.frequency.value=freq;g.gain.setValueAtTime(.035,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.16);o.start();o.stop(audioCtx.currentTime+.17);}catch{}}
-$('#sound').onclick=()=>{audioOn=!audioOn;$('#sound').textContent='声音：'+(audioOn?'开':'关');$('#sound').setAttribute('aria-pressed',audioOn);sound();};
+let state = fresh(), storageOK = true;
+try {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (raw) { const parsed = JSON.parse(raw); if (validSave(parsed)) state = parsed; else storageOK = false; }
+} catch { storageOK = false; }
+let dirty = false, saveClock = 0, toastTimer;
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); dirty = false; }
+  catch { storageOK = false; toast('无法保存进度，请使用导出存档备份'); }
+}
+function toast(message) {
+  $('#toast').textContent = message;
+  $('#toast').classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>$('#toast').classList.remove('show'), 2600);
+}
+function sprite(p, shiny=false) { return `assets/sprites/${p.id}${shiny?'-shiny':''}.png`; }
+function pokeImage(p, shiny=false) {
+  const img = new Image(); img.src = sprite(p,shiny); img.alt = p.name; img.loading = 'lazy';
+  img.onerror = () => { img.onerror=null; img.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><circle cx="40" cy="40" r="23" fill="#e8e4c9" stroke="#98777b" stroke-width="3"/><path d="M17 40h46" stroke="#98777b" stroke-width="3"/><circle cx="40" cy="40" r="7" fill="#fdf7dc" stroke="#98777b" stroke-width="3"/></svg>'); };
+  return img;
+}
+let filter='all', activeTab='explore', autoEnabled=true, speed=state.speed||1;
+let balls=[], nextBallIn=0, simTime=0, accumulator=0, lastTime=null, nextId=1;
+let boardHits=0, signalHits=0, electricHits=0, captures=0;
+const MAX_BALLS=48, SPAWN_INTERVAL=.65;
 const rarityNames=['','常见伙伴','特别伙伴','稀有伙伴','传说伙伴'];
-function capture(boost=0,notify=true){const roll=Math.random();const tier=roll<.015+boost*.002?4:roll<.12+boost*.012?3:roll<.44+boost*.015?2:1;const pool=SPECIES.filter(p=>p.rarity===tier);const p=pool[Math.floor(Math.random()*pool.length)],shiny=Math.random()<.05,isNew=!state.caught[p.id];const c=state.caught[p.id]??{count:0,shiny:0};c.count++;if(shiny)c.shiny++;state.caught[p.id]=c;state.recent.unshift({id:p.id,shiny});state.recent=state.recent.slice(0,12);save();render();
-$('#rewardTag').textContent=shiny?'A SHINY LITTLE MIRACLE':isNew?'NEW DISCOVERY':'HELLO AGAIN';$('#rewardHeading').textContent=shiny?'闪光！是特别的相遇':isNew?'发现一位新朋友！':'老朋友，又见面啦';$('#rewardName').textContent=p.name+(shiny?' ✦':'');$('#rewardRarity').textContent=rarityNames[p.rarity]+' · '+p.type;$('#rewardText').textContent=`已加入收藏 · 你拥有 ${c.count} 只${shiny?'，其中闪光 '+c.shiny+' 只':''}`;
-const img=$('#rewardImage');img.hidden=false;$('#rewardFallback').hidden=true;img.onerror=()=>{img.hidden=true;$('#rewardFallback').hidden=false;};img.src=sprite(p,shiny);img.alt=p.name;
-if(notify)$('#reward').showModal();else toast(`${shiny?'✦ 闪光！':'发现伙伴：'}${p.name} · 已收入图鉴`);sound(shiny?1100:740);
+function renderStats() {
+  $('#shotTotal').textContent=state.shots;
+  $('#coins').textContent=state.coins;
+  $('#progress').textContent=`${Object.keys(state.caught).length} / ${SPECIES.length}`;
+  $('#caughtTotal').textContent=`${Object.values(state.caught).reduce((sum,v)=>sum+v.count,0)} 位伙伴`;
 }
-$('#closeReward').onclick=$('#continue').onclick=()=>$('#reward').close();
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===b));document.querySelectorAll('.page').forEach(p=>p.hidden=p.id!==b.dataset.tab);if(b.dataset.tab==='explore')resize();});
-document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(t=>t.classList.toggle('active',t===b));render();});
-$('#refill').onclick=()=>{if(state.coins<30)return toast('金币不足，探索碰撞可以获得金币');state.coins-=30;state.energy+=5;save();render();toast('已补充 5 点探索能量');};
-$('#gacha').onclick=()=>{if(state.coins<50)return toast('需要 50 金币，先去森林探索吧');state.coins-=50;capture(3);};
-$('#export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`pocket-field-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-$('#import').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(autoEnabled)return toast('请先暂停自动丢球，再导入存档');if(file.size>100000)return toast('存档文件过大');try{const parsed=JSON.parse(await file.text());if(!validSave(parsed))throw Error();if(!confirm('导入会替换当前进度。建议先导出备份，确定继续吗？'))return;ball=null;state=parsed;daily();save();render();toast('存档已导入');}catch{toast('无法读取存档，请选择本游戏导出的 JSON 文件');}};
-// Fixed-step simulation keeps collisions consistent on 60 Hz and 120 Hz phones.
-const canvas=$('#board'),ctx=canvas.getContext('2d');
-const W=400,H=490;
-let ball=null,lastTime=0,accumulator=0,autoEnabled=true,nextBallIn=0;
-let speed=Number(state.speed)||1;
-speed=Math.min(5,Math.max(.5,speed));
-$('#speed').value=speed;$('#speedValue').textContent=speed+'×';
-function updateAutoControl(){
-const btn=$('#launch');btn.replaceChildren();btn.append(document.createTextNode('自动丢球：'+(autoEnabled?'开':'关')));const hint=document.createElement('span');hint.textContent=autoEnabled?'点击暂停 Ⅱ':'点击继续 ▷';btn.append(hint);btn.setAttribute('aria-checked',String(autoEnabled));
+function renderRecent() {
+  const root=$('#recent'); root.replaceChildren();
+  if (!state.recent.length) { const p=document.createElement('p');p.className='empty';p.textContent='精灵球正在探索，第一位伙伴很快就到。';root.append(p); }
+  state.recent.slice(0,4).forEach(r=>{
+    const p=SPECIES.find(p=>p.id===r.id), card=document.createElement('div');card.className='recent-item';
+    const name=document.createElement('strong');name.textContent=p.name+(r.shiny?' ✦':'');
+    const type=document.createElement('small');type.textContent=r.shiny?'闪光伙伴':p.type+'系 · 自动收藏';
+    card.append(pokeImage(p,r.shiny),name,type);root.append(card);
+  });
 }
-$('#speed').oninput=()=>{speed=Number($('#speed').value);state.speed=speed;$('#speedValue').textContent=speed+'×';save();};
-$('#launch').onclick=()=>{daily();if(!autoEnabled&&state.energy<1&&!ball){render();return toast('能量不足，请先补充能量');}autoEnabled=!autoEnabled;lastTime=0;accumulator=0;updateAutoControl();$('#launchTitle').textContent=autoEnabled?'自动探索已开启':'自动探索已暂停';$('#launchHint').textContent=autoEnabled?'连续丢球中 · 速度可随时调整':'弹珠已暂停，点击开关继续探索';};
+function renderDex() {
+  const root=$('#dex');root.replaceChildren();
+  SPECIES.filter(p=>filter==='all'||(filter==='caught'?state.caught[p.id]:state.caught[p.id]?.shiny)).forEach(p=>{
+    const c=state.caught[p.id], card=document.createElement('div');card.className='dex-card'+(c?'':' locked');
+    const num=document.createElement('small');num.textContent='#'+String(p.id).padStart(3,'0');
+    const name=document.createElement('strong');name.textContent=c?p.name:'未发现';
+    const count=document.createElement('small');count.textContent=c?`${p.type} · ×${c.count}`:'等待一次相遇';
+    card.append(num,pokeImage(p,!!c?.shiny),name,count);
+    if(c?.shiny){const star=document.createElement('span');star.className='shiny-star';star.textContent='✦ '+c.shiny;card.append(star);}
+    root.append(card);
+  });
+  if(!root.children.length){const p=document.createElement('p');p.className='empty';p.textContent='还没有这样的伙伴，继续探索吧。';root.append(p);}
+}
+function renderAuto() {
+  $('#launch').setAttribute('aria-checked',String(autoEnabled));
+  $('#autoLabel').textContent='自动投球：'+(autoEnabled?'开':'关');
+  $('#autoAction').textContent=autoEnabled?'暂停 Ⅱ':'继续 ▷';
+  $('#boardStatus').textContent=autoEnabled?'● 自动探索中':'Ⅱ 已暂停';
+  $('#speed').value=speed;$('#speedValue').textContent=speed+'×';
+}
+function render() { renderStats(); renderRecent(); if(activeTab==='collection')renderDex();renderAuto(); }
+let audioOn=false, audioCtx, lastSound=0;
+function sound(freq=500) {
+  if(!audioOn || performance.now()-lastSound<80)return;
+  try {
+    audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();lastSound=performance.now();
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.frequency.value=freq;
+    g.gain.setValueAtTime(.025,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.1);o.start();o.stop(audioCtx.currentTime+.1);
+  } catch {}
+}
+function showCatch(target,p,shiny,source) {
+  target.replaceChildren();target.classList.toggle('shiny',shiny);
+  const text=document.createElement('div'),name=document.createElement('strong'),detail=document.createElement('p');
+  name.textContent=(shiny?'✦ 闪光！':'')+p.name+' ×1';
+  detail.textContent=`${source} · ${rarityNames[p.rarity]} · 自动收入图鉴（共 ${state.caught[p.id].count} 只）`;
+  text.append(name,detail);target.append(pokeImage(p,shiny),text);
+}
+function capture(boost=0,source='三地探索') {
+  const roll=Math.random(), tier=roll<.015+boost*.002?4:roll<.12+boost*.012?3:roll<.44+boost*.015?2:1;
+  const pool=SPECIES.filter(p=>p.rarity===tier),p=pool[Math.floor(Math.random()*pool.length)],shiny=Math.random()<(source==='精灵扭蛋'?.05:Math.min(.12,.05+boost*.005));
+  const c=state.caught[p.id]??{count:0,shiny:0};c.count++;if(shiny)c.shiny++;state.caught[p.id]=c;
+  state.recent.unshift({id:p.id,shiny});state.recent=state.recent.slice(0,12);dirty=true;
+  showCatch($('#latestCatch'),p,shiny,source);
+  if(source==='精灵扭蛋')showCatch($('#gachaResult'),p,shiny,source);
+  renderStats();if(activeTab==='collection')renderDex();if(activeTab==='explore')renderRecent();
+  if(shiny)toast('✦ 闪光 '+p.name+' 已自动加入图鉴');
+  sound(shiny?1000:720);return {id:p.id,shiny};
+}
+$('#launch').onclick=()=>{autoEnabled=!autoEnabled;lastTime=null;accumulator=0;renderAuto();};
+$('#speed').oninput=()=>{speed=Number($('#speed').value);state.speed=speed;renderAuto();save();};
+$('#burst').onclick=()=>{
+  if(!autoEnabled)return toast('已暂停，打开自动投球后再加投');
+  for(let i=0;i<5;i++)launchBall();renderStats();
+};
+$('#gacha').onclick=()=>{
+  if(state.coins<50)return toast('需要 50 金币，自动探索可获得金币');
+  state.coins-=50;capture(3,'精灵扭蛋');save(); // No modal, confirmation, or change to autoEnabled.
+};
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===b));
+  document.querySelectorAll('.page').forEach(p=>p.hidden=p.id!==activeTab);
+  if(activeTab==='explore'){renderRecent();resize();}if(activeTab==='collection')renderDex();
+});
+document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{
+  filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(t=>t.classList.toggle('active',t===b));renderDex();
+});
+$('#export').onclick=()=>{
+  save();const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=`pocket-field-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+$('#import').onchange=async e=>{
+  const file=e.target.files[0];e.target.value='';if(!file)return;
+  if(autoEnabled)return toast('请先暂停自动投球，再导入存档');
+  if(file.size>100000)return toast('存档文件过大');
+  try {
+    const parsed=JSON.parse(await file.text());if(!validSave(parsed))throw Error();
+    if(!confirm('导入会替换当前进度。建议先导出备份，确定继续吗？'))return;
+    state=parsed;balls=[];nextBallIn=0;speed=state.speed||1;save();render();toast('存档已导入，打开开关即可继续');
+  } catch { toast('无法读取存档，请选择本游戏导出的 JSON 文件'); }
+};
+// 120 Hz fixed steps, small balls, dense staggered pins, low restitution and gravity.
+// The video is only a visual reference; its exact physics constants are unavailable.
+const canvas=$('#board'),ctx=canvas.getContext('2d'),W=400,H=520;
+const BALL_RADIUS=3.4,GRAVITY=210,MAX_FALL=185;
 const pegs=[];
-for(let row=0;row<7;row++)for(let col=0;col<7;col++){const x=45+col*51+(row%2?20:0),y=105+row*43;if(x<375&&!(row===3&&col===3))pegs.push({x,y,r:5,lit:0});}
-const bumpers=[{x:107,y:183,r:23,label:'⚡',color:'#d8ce73'},{x:292,y:183,r:23,label:'◒',color:'#dba795'},{x:200,y:317,r:28,label:'✧',color:'#afc68a'}];
-const particles=[];
-function resize(){const d=Math.min(window.devicePixelRatio||1,2);canvas.width=W*d;canvas.height=H*d;ctx.setTransform(d,0,0,d,0,0);draw();}
+for(let row=0;row<12;row++)for(let col=0;col<12;col++){
+  const x=15+col*33+(row%2?16.5:0),y=63+row*31;
+  if(x>389 || Math.hypot(x-200,y-315)<53 || Math.hypot(x-111,y-116)<30 || Math.hypot(x-289,y-116)<30)continue;
+  pegs.push({x,y,r:2.8,lit:0});
+}
+const bumpers=[{x:111,y:116,r:18,kind:'energy',lit:0},{x:289,y:116,r:18,kind:'signal',lit:0}];
+const rails=[{x1:173,y1:448,x2:191,y2:483},{x1:227,y1:448,x2:209,y2:483}];
+const wheel={x:200,y:315,r:34,rotation:0};
+const effects=[];
+const mapImage=new Image();mapImage.src='assets/town.svg';
+const guardianImages=[150,248].map(id=>{const img=new Image();img.src=`assets/sprites/${id}.png`;return img;});
+let backgroundCanvas;
+function resize() {
+  const dpr=Math.min(window.devicePixelRatio||1,2);canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);draw();
+}
 window.addEventListener('resize',resize);
+mapImage.onload=()=>{backgroundCanvas=document.createElement('canvas');backgroundCanvas.width=W;backgroundCanvas.height=H;const c=backgroundCanvas.getContext('2d');c.imageSmoothingEnabled=false;c.drawImage(mapImage,0,0,W,H);draw();};
 function circle(x,y,r,color){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();}
-function roundBox(x,y,w,h,r,color){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=color;ctx.fill();}
-function draw(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#eaf0de';ctx.fillRect(0,0,W,H);
-// Subtle forest floor grid, river, and tiny trees.
-ctx.strokeStyle='#dfe7d3';ctx.lineWidth=1;for(let x=20;x<W;x+=25){ctx.beginPath();ctx.moveTo(x,40);ctx.lineTo(x,H);ctx.stroke();}for(let y=40;y<H;y+=25){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-ctx.beginPath();ctx.moveTo(266,40);ctx.bezierCurveTo(195,145,330,240,241,365);ctx.bezierCurveTo(195,419,180,452,190,490);ctx.strokeStyle='#cfdfd6';ctx.lineWidth=30;ctx.stroke();ctx.strokeStyle='#dce8df';ctx.lineWidth=18;ctx.stroke();
-for(let i=0;i<28;i++){let x=(i*113+19)%385,y=55+(i*71)%355;ctx.fillStyle='#b2c19c';ctx.fillRect(x-1,y+4,3,8);circle(x,y,7,'#d0dcbc');circle(x-2,y-4,5,'#c0d0aa');}
-roundBox(157,42,86,27,13,'#dde5ce');ctx.fillStyle='#7d9069';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('森林入口',200,59);
-for(const p of pegs){circle(p.x+1,p.y+2,p.r,'#b9c8a5');circle(p.x,p.y,p.r,p.lit>0?'#f0d67a':'#fbfcf0');circle(p.x-1,p.y-1,1.5,'#d6dfc8');}
-for(const b of bumpers){circle(b.x,b.y+4,b.r+4,'#c6d3b5');circle(b.x,b.y,b.r+3,'#f8faec');circle(b.x,b.y,b.r,b.color);circle(b.x,b.y,b.r-5,'#f5f0ce');ctx.fillStyle='#65774d';ctx.font='bold 25px sans-serif';ctx.fillText(b.label,b.x,b.y+8);ctx.font='9px sans-serif';ctx.fillText(b.x===200?'幸运研究站':b.x===107?'能量碰撞':'精灵信号',b.x,b.y+b.r+17);}
-const zones=[['草丛',0,'#c5d5a8'],['溪流',134,'#bed5d1'],['秘境',267,'#ded4a8']];for(const [label,x,c]of zones){roundBox(x+9,425,115,35,8,c);ctx.fillStyle='#657c58';ctx.font='11px sans-serif';ctx.fillText(label,x+67,447);}
-if(!ball){const aim=Number($('#aim').value);ctx.setLineDash([3,7]);ctx.strokeStyle='#829c68';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(200,78);ctx.lineTo(200+Math.sin(aim)*100,78+Math.cos(aim)*100);ctx.stroke();ctx.setLineDash([]);circle(200,78,7,'#f9f4d4');circle(198,76,2,'white');}
-if(ball){for(let i=0;i<ball.trail.length;i++){const p=ball.trail[i];circle(p.x,p.y,2+i*.25,`rgba(237,190,72,${i/ball.trail.length*.4})`);}circle(ball.x+1,ball.y+2,7,'#a5ac81');circle(ball.x,ball.y,7,'#f5ce67');circle(ball.x-2,ball.y-2,2,'#fff8d6');}
-for(const p of particles){ctx.globalAlpha=Math.max(0,p.life);circle(p.x,p.y,2.5,'#b39c4b');}ctx.globalAlpha=1;
+function label(text,x,y,width=90,color='#f4f3db'){
+  ctx.fillStyle=color;ctx.fillRect(x-width/2,y-9,width,14);ctx.strokeStyle='#b7bf9f';ctx.lineWidth=.7;ctx.strokeRect(x-width/2,y-9,width,14);
+  ctx.fillStyle='#5e674b';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.fillText(text,x,y+1);
 }
-function step(dt){for(const p of pegs)p.lit=Math.max(0,p.lit-dt);for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt*2;if(p.life<=0)particles.splice(i,1);}if(!ball)return;const b=ball;b.age+=dt;b.vy+=260*dt;b.x+=b.vx*dt;b.y+=b.vy*dt;b.trail.push({x:b.x,y:b.y});if(b.trail.length>9)b.trail.shift();if(b.x<12){b.x=12;b.vx=Math.abs(b.vx)*.85;}if(b.x>W-12){b.x=W-12;b.vx=-Math.abs(b.vx)*.85;}if(b.y<73){b.y=73;b.vy=Math.abs(b.vy);}
-for(const p of [...pegs,...bumpers]){const dx=b.x-p.x,dy=b.y-p.y,d=Math.hypot(dx,dy),min=p.r+7;if(d<min){const nx=d?dx/d:0,ny=d?dy/d:-1;b.x=p.x+nx*(min+.5);b.y=p.y+ny*(min+.5);const dot=b.vx*nx+b.vy*ny;if(dot<0){b.vx-=1.65*dot*nx;b.vy-=1.65*dot*ny;b.vx+=nx*(p.r>10?45:12);b.vy+=ny*(p.r>10?45:12);b.hits++;b.coins+=p.r>10?5:1;p.lit=.25;if(b.hits%3===0)sound(380+b.hits*12);for(let i=0;i<4;i++)particles.push({x:p.x,y:p.y,vx:(Math.random()-.5)*80,vy:(Math.random()-.5)*80,life:.5});}}}
-const speed=Math.hypot(b.vx,b.vy);if(speed>500){b.vx*=500/speed;b.vy*=500/speed;}
-$('#ballCount').textContent=`碰撞 ${b.hits} 次 · +${b.coins} 金币`;
-if(b.y>435||b.age>14)finishShot();
+function drawBall(b){
+  ctx.save();ctx.translate(b.x,b.y);ctx.rotate(b.spin);
+  circle(0,1,BALL_RADIUS+.6,'#5e70604d');circle(0,0,BALL_RADIUS+.4,'#526451');
+  ctx.beginPath();ctx.arc(0,0,BALL_RADIUS,Math.PI,Math.PI*2);ctx.fillStyle='#bf3e51';ctx.fill();
+  ctx.beginPath();ctx.arc(0,0,BALL_RADIUS,0,Math.PI);ctx.fillStyle='#fff9e2';ctx.fill();
+  ctx.strokeStyle='#56604e';ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(-BALL_RADIUS,0);ctx.lineTo(BALL_RADIUS,0);ctx.stroke();circle(0,0,1.1,'#f7f5e6');ctx.restore();
 }
-function finishShot(){if(!ball)return;const b=ball;ball=null;state.coins+=b.coins+10;nextBallIn=.65;save();$('#launchTitle').textContent=`探索完成 · 获得 ${b.coins+10} 金币`;$('#launchHint').textContent='下一颗弹珠即将出发 · 捕获自动收入图鉴';$('#ballCount').textContent='探索完成';capture(Math.min(5,b.hits/5),false);}
+function draw(){
+  ctx.clearRect(0,0,W,H);if(backgroundCanvas)ctx.drawImage(backgroundCanvas,0,0);else{ctx.fillStyle='#c5d3b0';ctx.fillRect(0,0,W,H);}
+  // Fog sits behind the pins, never over the moving balls.
+  const fog=ctx.createLinearGradient(0,0,0,75);fog.addColorStop(0,'#eff1dfd9');fog.addColorStop(1,'#eff1df00');ctx.fillStyle=fog;ctx.fillRect(0,0,W,75);
+  for(const p of pegs){circle(p.x+.6,p.y+1.3,p.r+.3,'#788866');circle(p.x,p.y,p.r,p.lit>0?'#f9d779':'#e8edce');circle(p.x-.6,p.y-.8,1.1,'#fafbec');}
+  for(const b of bumpers){circle(b.x,b.y+1,b.r+4,'#97a583');circle(b.x,b.y,b.r+3,'#f9f4d8');circle(b.x,b.y,b.r,b.lit>0?'#ffeab0':b.kind==='energy'?'#e6cf66':'#d4dddd');
+    if(b.kind==='energy'){ctx.fillStyle='#625831';ctx.beginPath();ctx.moveTo(b.x+2,b.y-12);ctx.lineTo(b.x-7,b.y+2);ctx.lineTo(b.x,b.y+1);ctx.lineTo(b.x-3,b.y+12);ctx.lineTo(b.x+8,b.y-3);ctx.lineTo(b.x+2,b.y-2);ctx.closePath();ctx.fill();}
+    else{ctx.lineWidth=3;ctx.strokeStyle='#ae344f';ctx.beginPath();ctx.arc(b.x,b.y,12,Math.PI,Math.PI*2);ctx.stroke();ctx.strokeStyle='#697660';ctx.beginPath();ctx.arc(b.x,b.y,12,0,Math.PI);ctx.stroke();ctx.beginPath();ctx.moveTo(b.x-12,b.y);ctx.lineTo(b.x+12,b.y);ctx.stroke();circle(b.x,b.y,4,'#f6f2d7');circle(b.x,b.y,2,'#a34355');}
+  }
+  label(`碰撞蓄能 ${electricHits}/30`,111,150,98);label(`精灵信号 ${signalHits}/50`,289,150,98);
+  // Four rotating red-and-white arcs with physical gaps.
+  ctx.lineCap='round';for(let i=0;i<4;i++){const a=wheel.rotation+i*Math.PI/2;ctx.strokeStyle='#778872';ctx.lineWidth=6;ctx.beginPath();ctx.arc(wheel.x,wheel.y+1,wheel.r,a,a+1.03);ctx.stroke();ctx.strokeStyle=i%2?'#f3f0d9':'#b83b51';ctx.lineWidth=4;ctx.beginPath();ctx.arc(wheel.x,wheel.y,wheel.r,a,a+1.03);ctx.stroke();}
+  circle(wheel.x,wheel.y,8,'#a99547');circle(wheel.x,wheel.y,5,'#e3c867');circle(wheel.x-1,wheel.y-1,2,'#faf0b3');label('✦ 穿过中心，提高闪光机遇',200,267,152);
+  for(const r of rails){ctx.strokeStyle='#703c49';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(r.x1,r.y1);ctx.lineTo(r.x2,r.y2);ctx.stroke();ctx.strokeStyle='#c64f65';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(r.x1,r.y1);ctx.lineTo(r.x2,r.y2);ctx.stroke();}
+  ctx.strokeStyle='#81394e';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(188,484);ctx.lineTo(212,484);ctx.stroke();label('落入口，捕捉精灵',200,435,109);
+  ctx.strokeStyle='#a9b59b';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,450);ctx.lineTo(400,450);ctx.stroke();
+  label('草丛探索',87,438,88,'#dbd1e4');label('秘境探索',313,438,88,'#d3e3bf');
+  guardianImages.forEach((img,i)=>{if(img.complete&&img.naturalWidth){ctx.imageSmoothingEnabled=false;ctx.drawImage(img,i?277:49,452,73,66);}});
+  for(const b of balls)drawBall(b);
+  for(const e of effects){ctx.globalAlpha=Math.min(1,e.life*2);ctx.textAlign='center';ctx.font='bold 9px sans-serif';ctx.fillStyle=e.color;ctx.fillText(e.text,e.x,e.y);ctx.globalAlpha=1;}
+  if(!autoEnabled){ctx.fillStyle='#38432b26';ctx.fillRect(0,0,W,H);label('Ⅱ 已暂停 · 点击上方开关继续',200,210,183,'#fff7e6');}
+}
 function launchBall(){
-daily();if(state.energy<1){autoEnabled=false;render();$('#launchTitle').textContent='能量用完啦，休息一下';$('#launchHint').textContent='补充能量后，打开自动丢球开关继续';toast('自动探索已停止：请补充能量');return;}
-state.energy--;state.shots++;save();const aim=Number($('#aim').value);ball={x:200,y:78,vx:Math.sin(aim)*230+(Math.random()-.5)*18,vy:Math.cos(aim)*180,age:0,hits:0,coins:0,trail:[]};$('#launchTitle').textContent='弹珠正在自动探索森林…';$('#launchHint').textContent='捕获自动收藏 · 可随时暂停或调节速度';sound(600);render();
+  if(balls.length>=MAX_BALLS)return;
+  const aim=Number($('#aim').value), x=Math.max(12,Math.min(388,28+Math.random()*344+aim*30));
+  balls.push({id:nextId++,x,y:21+Math.random()*6,vx:aim*40+(Math.random()-.5)*30,vy:25+Math.random()*18,age:0,hits:0,coins:0,lucky:false,spin:Math.random()*6,lastPeg:null});
+  state.shots++;dirty=true;
 }
-$('#aim').oninput=()=>{if(!ball)draw();};
-function frame(t){if(!lastTime)lastTime=t;const elapsed=Math.min((t-lastTime)/1000,.05);lastTime=t;
-if(autoEnabled&&!document.hidden&&!$('#reward').open){
- if(!ball){nextBallIn-=elapsed*speed;if(nextBallIn<=0)launchBall();}
- accumulator+=elapsed*speed;
- while(accumulator>=1/120){step(1/120);accumulator-=1/120;}
-}else accumulator=0;
-if(!$('#explore').hidden)draw();requestAnimationFrame(frame);}
-document.addEventListener('visibilitychange',()=>{lastTime=0;accumulator=0;if(!document.hidden&&daily()){save();render();toast('新的一天，探索能量已补给');}});
-window.addEventListener('pagehide',()=>{if(ball)finishShot();save();});
-render();resize();save();requestAnimationFrame(frame);if(!storageOK)toast('存档读取异常，建议导出备份后检查浏览器设置');
+function impact(b,nx,ny,restitution=.64,boost=0){
+  const dot=b.vx*nx+b.vy*ny;if(dot>=0)return false;
+  b.vx-=(1+restitution)*dot*nx;b.vy-=(1+restitution)*dot*ny;
+  b.vx+=nx*boost;b.vy+=ny*boost;b.spin+=nx*.4;b.hits++;boardHits++;return true;
+}
+function collidePeg(b,p){
+  const dx=b.x-p.x,dy=b.y-p.y,d=Math.hypot(dx,dy),r=BALL_RADIUS+p.r;
+  if(d>=r)return;
+  const nx=d>.001?dx/d:(b.id%2?1:-1)*.2,ny=d>.001?dy/d:-1;
+  b.x=p.x+nx*(r+.08);b.y=p.y+ny*(r+.08);
+  if(impact(b,nx,ny,p.kind ? .76 : .62,p.r>10?13:0)){
+    p.lit=.18;b.coins+=p.r>10?3:1;
+    if(p.kind==='energy')electricHits++;if(p.kind==='signal')signalHits++;
+    // A small asymmetric nudge prevents perfectly balanced balls on a pin.
+    if(Math.abs(b.vx)<8)b.vx+=(b.id%2?1:-1)*13;
+  }
+}
+function collideRail(b,r){
+  const dx=r.x2-r.x1,dy=r.y2-r.y1,t=Math.max(0,Math.min(1,((b.x-r.x1)*dx+(b.y-r.y1)*dy)/(dx*dx+dy*dy)));
+  const x=r.x1+t*dx,y=r.y1+t*dy,bx=b.x-x,by=b.y-y,d=Math.hypot(bx,by),radius=BALL_RADIUS+3;
+  if(d<radius){const nx=d?bx/d:0,ny=d?by/d:-1;b.x=x+nx*(radius+.1);b.y=y+ny*(radius+.1);impact(b,nx,ny,.5);}
+}
+function finishBall(b){
+  const funnel=Math.abs(b.x-200)<28,zone=funnel?'中央捕获口':b.x<200?'草丛探索':'秘境探索';
+  state.coins+=b.coins+5+(funnel?8:0);captures++;dirty=true;
+  capture(Math.min(5,b.hits/10)+(b.lucky?3:0)+(funnel?1:0),zone);
+  if(effects.length<12)effects.push({x:Math.max(40,Math.min(360,b.x)),y:479,text:`+${b.coins+5+(funnel?8:0)} 金币`,life:1.2,color:'#745c2d'});
+}
+function step(dt){
+  simTime+=dt;wheel.rotation=simTime*.85;
+  for(const p of pegs)p.lit=Math.max(0,p.lit-dt);for(const b of bumpers)b.lit=Math.max(0,b.lit-dt);
+  for(let i=effects.length-1;i>=0;i--){effects[i].life-=dt;effects[i].y-=12*dt;if(effects[i].life<=0)effects.splice(i,1);}
+  for(let i=balls.length-1;i>=0;i--){
+    const b=balls[i];b.age+=dt;b.vy=Math.min(MAX_FALL,b.vy+GRAVITY*dt);b.x+=b.vx*dt;b.y+=b.vy*dt;b.spin+=b.vx*dt*.04;
+    if(b.x<5){b.x=5;b.vx=Math.abs(b.vx)*.72;}if(b.x>395){b.x=395;b.vx=-Math.abs(b.vx)*.72;}if(b.y<6){b.y=6;b.vy=Math.abs(b.vy);}
+    for(const p of pegs)if(Math.abs(b.x-p.x)<8&&Math.abs(b.y-p.y)<8)collidePeg(b,p);
+    for(const p of bumpers)collidePeg(b,p);
+    const dx=b.x-wheel.x,dy=b.y-wheel.y,d=Math.hypot(dx,dy);
+    if(d<17&&!b.lucky){b.lucky=true;effects.push({x:200,y:295,text:'✦ 幸运穿环',life:1,color:'#8b6432'});}
+    const angle=((Math.atan2(dy,dx)-wheel.rotation)%(Math.PI/2)+Math.PI/2)%(Math.PI/2);
+    if(Math.abs(d-wheel.r)<BALL_RADIUS+2&&angle<1.03&&d>.001){
+      const side=d>=wheel.r?1:-1,nx=dx/d*side,ny=dy/d*side;
+      b.x=wheel.x+dx/d*(wheel.r+side*(BALL_RADIUS+2.1));b.y=wheel.y+dy/d*(wheel.r+side*(BALL_RADIUS+2.1));
+      if(impact(b,nx,ny,.72)){b.vx+=-dy/d*12;b.vy+=dx/d*12;}
+    }
+    for(const r of rails)collideRail(b,r);
+    b.vx=Math.max(-160,Math.min(160,b.vx));
+    // Resolve rare stuck balls after 24 simulated seconds to keep the board bounded.
+    if(b.y>492||b.age>24){balls.splice(i,1);finishBall(b);}
+  }
+}
+let statsClock=0;
+function frame(t){
+  if(lastTime===null)lastTime=t;
+  const elapsed=Math.max(0,Math.min((t-lastTime)/1000,.05));lastTime=t;
+  if(autoEnabled&&!document.hidden){
+    nextBallIn-=elapsed*speed;
+    while(nextBallIn<=0){launchBall();nextBallIn+=SPAWN_INTERVAL;}
+    // Rate changes faster than gravity so higher rates produce a denser field.
+    accumulator+=elapsed*Math.sqrt(speed);
+    while(accumulator>=1/120){step(1/120);accumulator-=1/120;}
+  }else accumulator=0;
+  statsClock+=elapsed;saveClock+=elapsed;
+  if(statsClock>.2){$('#ballCount').textContent=`场上 ${balls.length} 球 · 已捕获 ${captures}`;renderStats();statsClock=0;}
+  if(saveClock>1){if(dirty)save();saveClock=0;}
+  if(activeTab==='explore')draw();requestAnimationFrame(frame);
+}
+document.addEventListener('visibilitychange',()=>{lastTime=null;accumulator=0;if(document.hidden)save();});
+window.addEventListener('pagehide',save);
+render();resize();save();launchBall();nextBallIn=SPAWN_INTERVAL;requestAnimationFrame(frame);
+if(!storageOK)toast('存档读取异常，请导出备份并检查浏览器设置');

@@ -23,6 +23,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html style.css game.js _site/
+          cp -R assets _site/assets
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
